@@ -1,1 +1,15 @@
-node_modules
+node_modules/
+dist/
+build/
+.env
+.env.*
+
+# Local data and logs
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db

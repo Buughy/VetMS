@@ -63,8 +63,9 @@ export default function InvoiceForm() {
     },
   ]);
 
-  const [status, setStatus] = React.useState<'Draft' | 'Paid'>('Paid');
+  const [status, setStatus] = React.useState<'Draft' | 'Paid'>('Draft');
   const [saving, setSaving] = React.useState(false);
+  const isSaving = React.useRef(false);
   const [error, setError] = React.useState<string | null>(null);
   const [warnings, setWarnings] = React.useState<string[]>([]);
 
@@ -317,6 +318,8 @@ export default function InvoiceForm() {
   }
 
   async function save(targetStatus: 'Draft' | 'Paid' = 'Draft') {
+    if (isSaving.current) return false;
+
     setError(null);
     setWarnings([]);
 
@@ -372,6 +375,7 @@ export default function InvoiceForm() {
     }
 
     setSaving(true);
+    isSaving.current = true;
     setStatus(targetStatus); // optimistic update
 
     try {
@@ -401,7 +405,8 @@ export default function InvoiceForm() {
 
       if (!editingId) {
         // Redirect to the edit page for the new invoice
-        navigate(`/invoices/${result.invoiceId}`, { replace: true });
+        shouldBlock.current = false;
+        navigate(`/invoice/${result.invoiceId}`, { replace: true });
         // The cleanup/state reset will effectively happen because we unmount/remount (or route changes)
         return true;
       }
@@ -411,6 +416,7 @@ export default function InvoiceForm() {
       return false;
     } finally {
       setSaving(false);
+      isSaving.current = false;
     }
   }
 
@@ -495,10 +501,11 @@ export default function InvoiceForm() {
     return false;
   }, [editingId, clientName, contactInfo, petGroups]);
 
-  // Block navigation if dirty
+  // Block navigation if dirty - allows bypassing if intended
+  const shouldBlock = React.useRef(true);
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
-      isDirty && currentLocation.pathname !== nextLocation.pathname
+      shouldBlock.current && isDirty && currentLocation.pathname !== nextLocation.pathname
   );
 
   // Browser refresh warning

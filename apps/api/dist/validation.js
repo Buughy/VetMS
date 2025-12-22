@@ -18,7 +18,7 @@ export const createInvoiceSchema = z.object({
     clientName: z.string().min(1),
     contactInfo: z.string().optional(),
     date: z.string().min(1),
-    status: z.enum(['Draft', 'Paid']).default('Paid'),
+    status: z.enum(['Draft', 'Paid']).default('Draft'),
     pets: z.array(invoicePetSchema).min(1),
 });
 export const createOrUpdateClientSchema = z.object({

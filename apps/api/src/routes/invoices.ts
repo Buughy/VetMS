@@ -171,6 +171,23 @@ export function registerInvoices(server: FastifyInstance, db: Db) {
     }
   );
 
+  server.delete(
+    '/api/invoices/:id',
+    async (req: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Invalid id' });
+
+      // Check if exists
+      const exists = db.prepare('SELECT 1 FROM invoices WHERE id=?').get(id);
+      if (!exists) return reply.code(404).send({ error: 'Not found' });
+
+      // Delete (cascade will handle items)
+      db.prepare('DELETE FROM invoices WHERE id=?').run(id);
+
+      return { success: true };
+    }
+  );
+
   server.post('/api/invoices', async (req: FastifyRequest, reply: FastifyReply) => {
     const parsed = createInvoiceSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send(parsed.error);
