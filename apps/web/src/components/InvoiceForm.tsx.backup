@@ -1,0 +1,496 @@
+import * as React from 'react';
+import { useParams } from 'react-router-dom';
+import Button from './ui/Button';
+import Input from './ui/Input';
+import Combobox, { type ComboboxOption } from './ui/Combobox';
+import { api } from '../lib/api';
+import type { Client, Pet, Product } from '../lib/types';
+import type { InvoiceDetail } from '../lib/types-extended';
+import { useDebouncedValue } from '../lib/useDebouncedValue';
+import { formatRon } from '../lib/money';
+import { exportInvoicePdf } from '../lib/pdf';
+import { Table, Td, Th } from './ui/Table';
+
+type Line = {
+  key: string;
+  productId?: number | undefined;
+  productSearch: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+};
+
+function isoDateOnly(date = new Date()) {
+  return date.toISOString().slice(0, 10);
+}
+
+export default function InvoiceForm() {
+  const params = useParams<{ id?: string }>();
+  const editingId = params.id ? Number(params.id) : null;
+  const [loaded, setLoaded] = React.useState(false);
+
+  const [date, setDate] = React.useState(isoDateOnly());
+
+  const [clientName, setClientName] = React.useState('');
+  const [contactInfo, setContactInfo] = React.useState('');
+  const [clientOptions, setClientOptions] = React.useState<Client[]>([]);
+  const debouncedClient = useDebouncedValue(clientName, 200);
+  const [selectedClient, setSelectedClient] = React.useState<Client | null>(null);
+
+  const [petName, setPetName] = React.useState('');
+  const [petSpecies, setPetSpecies] = React.useState('');
+  const [petOptions, setPetOptions] = React.useState<Pet[]>([]);
+  const [selectedPet, setSelectedPet] = React.useState<Pet | null>(null);
+
+  const [productOptions, setProductOptions] = React.useState<Product[]>([]);
+
+  const [lines, setLines] = React.useState<Line[]>([
+    { key: crypto.randomUUID(), productSearch: '', name: '', quantity: 1, unitPrice: 0 },
+  ]);
+
+  const [status, setStatus] = React.useState<'Draft' | 'Saved'>('Saved');
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [warnings, setWarnings] = React.useState<string[]>([]);
+  const [friendlyId, setFriendlyId] = React.useState<string | null>(null);
+
+  // Load existing invoice if editing
+  React.useEffect(() => {
+    if (!editingId || loaded) return;
+    let cancelled = false;
+    api
+      .getInvoice(editingId)
+      .then((data) => {
+        if (cancelled) return;
+        const detail = data as InvoiceDetail;
+        setDate(detail.invoice.date);
+        setClientName(detail.invoice.client_name);
+        setContactInfo(detail.invoice.contact_info ?? '');
+        setPetName(detail.invoice.pet_name ?? '');
+        setPetSpecies(detail.invoice.pet_species ?? '');
+        setStatus(detail.invoice.status);
+        setFriendlyId(detail.invoice.friendly_id);
+
+        const loadedLines: Line[] = detail.items.map((it) => ({
+          key: crypto.randomUUID(),
+          productId: it.product_id ?? undefined,
+          productSearch: it.product_name_snapshot,
+          name: it.product_name_snapshot,
+          quantity: it.quantity,
+          unitPrice: it.price_snapshot,
+        }));
+        setLines(loadedLines.length > 0 ? loadedLines : [{ key: crypto.randomUUID(), productSearch: '', name: '', quantity: 1, unitPrice: 0 }]);
+        setLoaded(true);
+      })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : 'Failed to load invoice');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editingId, loaded]);
+
+  // Client autocomplete
+  React.useEffect(() => {
+    let cancelled = false;
+    const q = debouncedClient.trim();
+    if (!q) {
+      setClientOptions([]);
+      return;
+    }
+    api
+      .clients(q)
+      .then((list) => {
+        if (cancelled) return;
+        setClientOptions(list as Client[]);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setClientOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedClient]);
+
+  // Pet options filtered by client
+  React.useEffect(() => {
+    let cancelled = false;
+    if (!selectedClient) {
+      setPetOptions([]);
+      return;
+    }
+    api
+      .pets(selectedClient.id)
+      .then((list) => {
+        if (cancelled) return;
+        setPetOptions(list as Pet[]);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPetOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClient]);
+
+  // Load products (local-first list; Combobox filters client-side)
+  React.useEffect(() => {
+    let cancelled = false;
+    api
+      .products()
+      .then((list) => {
+        if (cancelled) return;
+        setProductOptions(list as Product[]);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setProductOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const clientComboOptions: Array<ComboboxOption<number>> = clientOptions.map((c) => ({
+    id: c.id,
+    label: c.name,
+  }));
+
+  const petComboOptions: Array<ComboboxOption<number>> = petOptions.map((p) => ({
+    id: p.id,
+    label: p.name,
+  }));
+
+  const productComboOptions: Array<ComboboxOption<number>> = productOptions.map((p) => ({
+    id: p.id,
+    label: p.name,
+  }));
+
+  const total = lines.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
+
+  function updateLine(key: string, patch: Partial<Line>) {
+    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  }
+
+  function addLine() {
+    setLines((prev) => [
+      ...prev,
+      { key: crypto.randomUUID(), productSearch: '', name: '', quantity: 1, unitPrice: 0 },
+    ]);
+  }
+
+  function removeLine(key: string) {
+    setLines((prev) => prev.filter((l) => l.key !== key));
+  }
+
+  async function save() {
+    setError(null);
+    setWarnings([]);
+
+    if (!clientName.trim()) return setError('Client name is required.');
+    if (!petName.trim()) return setError('Pet name is required.');
+
+    const cleaned = lines
+      .map((l) => ({
+        productId: l.productId,
+        customName: l.productId ? undefined : l.name.trim(),
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+      }))
+      .filter((l) => (l.productId ? true : Boolean(l.customName)));
+
+    if (cleaned.length === 0) return setError('Add at least one line item.');
+
+    setSaving(true);
+    try {
+      const apiCall = editingId
+        ? api.updateInvoice(editingId, {
+            clientName: clientName.trim(),
+            contactInfo: contactInfo.trim() || undefined,
+            petName: petName.trim(),
+            petSpecies: petSpecies.trim() || undefined,
+            date,
+            status,
+            items: cleaned,
+          })
+        : api.createInvoice({
+            clientName: clientName.trim(),
+            contactInfo: contactInfo.trim() || undefined,
+            petName: petName.trim(),
+            petSpecies: petSpecies.trim() || undefined,
+            date,
+            status,
+            items: cleaned,
+          });
+
+      const result = (await apiCall) as { friendlyId: string; total: number; warnings?: string[] };
+
+      setFriendlyId(result.friendlyId);
+      setWarnings(result.warnings ?? []);
+
+      // Don't reset form if editing
+      if (!editingId) {
+        setLines([{ key: crypto.randomUUID(), productSearch: '', name: '', quantity: 1, unitPrice: 0 }]);
+        setSelectedPet(null);
+        setSelectedClient(null);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveAndExportPdf() {
+    await save();
+    if (!friendlyId) return;
+
+    try {
+      const settings = await api.getSettings();
+      exportInvoicePdf({
+        friendlyId,
+        date,
+        clientName: clientName.trim(),
+        petName: petName.trim(),
+        items: lines
+          .filter((l) => l.productId || l.name.trim())
+          .map((l) => ({
+            name: l.name,
+            quantity: l.quantity,
+            unitPrice: l.unitPrice,
+          })),
+      }, settings);
+    } catch (e: unknown) {
+      console.error('Failed to fetch settings for PDF export:', e);
+      // Still export with empty settings
+      exportInvoicePdf({
+        friendlyId,
+        date,
+        clientName: clientName.trim(),
+        petName: petName.trim(),
+        items: lines
+          .filter((l) => l.productId || l.name.trim())
+          .map((l) => ({
+            name: l.name,
+            quantity: l.quantity,
+            unitPrice: l.unitPrice,
+          })),
+      }, {});
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div className="text-lg font-semibold text-slate-900">
+          {editingId ? `Edit Invoice: ${friendlyId || editingId}` : 'New Invoice'}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={status === 'Saved' ? 'primary' : 'secondary'}
+            onClick={() => setStatus('Saved')}
+            type="button"
+          >
+            Saved
+          </Button>
+          <Button
+            variant={status === 'Draft' ? 'primary' : 'secondary'}
+            onClick={() => setStatus('Draft')}
+            type="button"
+          >
+            Draft
+          </Button>
+        </div>
+      </div>
+
+      {error && <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {friendlyId && (
+        <div className="rounded-md border border-slate-200 bg-white p-3 text-sm text-slate-700">
+          Saved as <span className="font-semibold">{friendlyId}</span>.
+        </div>
+      )}
+      {warnings.length > 0 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          {warnings.join(' · ')}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="md:col-span-1">
+          <label className="text-xs font-medium text-slate-700">Date</label>
+          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+        <div className="md:col-span-2" />
+
+        <div className="md:col-span-1">
+          <Combobox
+            id="client"
+            label="Client"
+            value={clientName}
+            onValueChange={(v) => {
+              setClientName(v);
+              setSelectedClient(null);
+              setSelectedPet(null);
+              setPetName('');
+            }}
+            options={clientComboOptions}
+            placeholder="Type client name…"
+            allowCustom
+            onSelectOption={(opt) => {
+              const client = clientOptions.find((c) => c.id === opt.id) ?? null;
+              setSelectedClient(client);
+            }}
+          />
+        </div>
+
+        <div className="md:col-span-1">
+          <Combobox
+            id="pet"
+            label="Pet"
+            value={petName}
+            onValueChange={(v) => {
+              setPetName(v);
+              setSelectedPet(null);
+            }}
+            options={petComboOptions}
+            placeholder={selectedClient ? 'Type pet name…' : 'Type pet name…'}
+            allowCustom
+            onSelectOption={(opt) => {
+              const pet = petOptions.find((p) => p.id === opt.id) ?? null;
+              setSelectedPet(pet);
+            }}
+          />
+        </div>
+
+        <div className="md:col-span-1">
+          <label className="text-xs font-medium text-slate-700">Pet Species (optional)</label>
+          <Input value={petSpecies} onChange={(e) => setPetSpecies(e.target.value)} placeholder="Dog, Cat…" />
+        </div>
+
+        <div className="md:col-span-1">
+          <label className="text-xs font-medium text-slate-700">Contact Info (optional)</label>
+          <Input value={contactInfo} onChange={(e) => setContactInfo(e.target.value)} placeholder="Phone / notes" />
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-white">
+        <div className="flex items-center justify-between border-b border-slate-100 p-3">
+          <div className="text-sm font-semibold text-slate-900">Invoice Lines</div>
+          <Button type="button" variant="secondary" onClick={addLine}>
+            Add line
+          </Button>
+        </div>
+
+        <div className="overflow-auto">
+          <Table>
+            <thead>
+              <tr>
+                <Th>Product / Custom Item</Th>
+                <Th className="w-[120px]">Qty</Th>
+                <Th className="w-[160px]">Unit Price</Th>
+                <Th className="w-[140px]">Line Total</Th>
+                <Th className="w-[120px]">Actions</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((l, idx) => {
+                const lineTotal = l.quantity * l.unitPrice;
+                return (
+                  <tr key={l.key} className={idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                    <Td>
+                      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                        <div>
+                          <label className="sr-only">Product</label>
+                          <Combobox
+                            id={`product-${l.key}`}
+                            label="Product"
+                            value={l.productSearch}
+                            onValueChange={(v) => updateLine(l.key, { productSearch: v })}
+                            options={productComboOptions}
+                            placeholder="Search product…"
+                            onSelectOption={(opt) => {
+                              const p = productOptions.find((pp) => pp.id === opt.id);
+                              if (!p) return;
+                              updateLine(l.key, {
+                                productId: p.id,
+                                name: p.name,
+                                productSearch: p.name,
+                                unitPrice: p.price,
+                              });
+                            }}
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-slate-700">Custom Item</label>
+                          <Input
+                            value={l.productId ? '' : l.name}
+                            onChange={(e) =>
+                              updateLine(l.key, {
+                                productId: undefined,
+                                name: e.target.value,
+                                productSearch: '',
+                              })
+                            }
+                            placeholder="Emergency Call…"
+                          />
+                          <div className="mt-1 text-xs text-slate-500">
+                            If product not found, type here.
+                          </div>
+                        </div>
+                      </div>
+                    </Td>
+                    <Td>
+                      <Input
+                        inputMode="decimal"
+                        value={String(l.quantity)}
+                        onChange={(e) => updateLine(l.key, { quantity: Number(e.target.value) || 0 })}
+                      />
+                    </Td>
+                    <Td>
+                      <Input
+                        inputMode="decimal"
+                        value={String(l.unitPrice)}
+                        onChange={(e) => updateLine(l.key, { unitPrice: Number(e.target.value) || 0 })}
+                      />
+                      <div className="mt-1 text-xs text-slate-500">{formatRon(l.unitPrice)}</div>
+                    </Td>
+                    <Td>
+                      <div className="text-sm font-semibold">{formatRon(lineTotal)}</div>
+                    </Td>
+                    <Td>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={() => removeLine(l.key)}
+                        disabled={lines.length === 1}
+                      >
+                        Remove
+                      </Button>
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </div>
+
+        <div className="flex items-center justify-between border-t border-slate-100 p-3">
+          <div className="text-sm text-slate-700">Total</div>
+          <div className="text-lg font-semibold text-slate-900">{formatRon(total)}</div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-2">
+        <Button type="button" variant="secondary" onClick={save} disabled={saving}>
+          {editingId ? 'Save Changes' : 'Save'}
+        </Button>
+        <Button type="button" onClick={saveAndExportPdf} disabled={saving}>
+          {editingId ? 'Save & Export PDF' : 'Finalize & Export PDF'}
+        </Button>
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,14 @@
+{
+  "name": "vetms",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:api": "npm run -w apps/api dev",
+    "dev:web": "npm run -w apps/web dev",
+    "build": "npm run -w apps/web build && npm run -w apps/api build",
+    "typecheck": "npm run -w apps/web typecheck && npm run -w apps/api typecheck"
+  }
+}

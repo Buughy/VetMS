@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --theme-bg-primary: #0f172a;
+    --theme-bg-secondary: #1e293b;
+    --theme-text-primary: #f8fafc;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 transition-colors duration-200;
+  }
+
+  html.dark body {
+    background-color: var(--theme-bg-primary);
+    color: var(--theme-text-primary);
+  }
+}
+
+
+
+html,
+body {
+  height: 100%;
+}
+
+
+
+* {
+  @apply focus:outline-none;
+}
+
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-slate-400;
+}
