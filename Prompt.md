@@ -1,110 +1,48 @@
-Prompt for AI Agent
-Project Title: Local-First Veterinary Practice Management System (React + Node + SQLite + Docker)
+1) Table schema (what to tell the AI agent)
 
-Role: Act as a Senior Full-Stack Engineer and UX Architect.
+Suggested table name: bank_statement_transactions_ing
 
-Objective: Build a complete, performant, and "local-first" web application to replace a complex Google Sheets workflow for a veterinary clinic. The app must run entirely offline on a single PC using Docker. It should replace a spreadsheet that manages Products, Prices, Order Lines (Invoices), and Client Data, but with a significantly better user experience.
+Excel column (as-is)	Normalized column	Type (recommended)	Nullable	Notes
+numar cont	account_iban	string	no	Source account IBAN (import as text).
+data procesarii	processed_at	date/datetime	no	In file it’s a date-like value (often midnight).
+suma	amount	decimal(18,2)	no	Positive/negative amounts; keep sign.
+valuta	currency	char(3)	no	e.g., RON.
+tip tranzactie  (note trailing space)	transaction_type	string	no	Trim header + values.
+nume beneficiar/ordonator	counterparty_name	string	yes	Sometimes missing.
+adresa beneficiar/ordonator	counterparty_address	string	yes	Often blank spaces (treat empty/whitespace as null).
+cont beneficiar/ordonator	counterparty_account	string	yes	Often missing; IBAN or account-like text.
+banca beneficiar/ordonator	counterparty_bank	string	yes	In your file it’s often N (don’t assume it’s a real bank name).
+detalii tranzactie	transaction_details	string	yes	Free text; can be long.
+sold intermediar	running_balance	decimal(18,2)	no	Balance after the transaction (per row).
+CUI Contrapartida	counterparty_tax_id	string	yes	Entirely empty in this file; store as string anyway.
 
-Tech Stack Constraints:
+Idempotent import key (important for monthly imports):
+	•	Add a computed transaction_id = hash of stable fields, e.g.:
+	•	account_iban + processed_at + amount + currency + running_balance + counterparty_account + transaction_details
+	•	Then do UPSERT on transaction_id so re-importing the same month doesn’t duplicate rows.
 
-Infrastructure: Single docker-compose.yml file. No external internet dependencies required at runtime.
+2) Example content (sample row, masked)
 
-Database: SQLite (via better-sqlite3 or Prisma with SQLite). It is the "best db" for this case because it requires zero configuration, is a single file (easy to backup), and is extremely fast for local, single-user workloads.
+Example record (one row), shown as JSON with IBANs masked:
 
-Backend: Node.js (Fastify or Express).
+{
+  "account_iban": "RO51…7967",
+  "processed_at": "2025-12-23",
+  "amount": -300.00,
+  "currency": "RON",
+  "transaction_type": "Transfer ING Business",
+  "counterparty_name": "Ana-Maria Pintilie",
+  "counterparty_address": null,
+  "counterparty_account": "RO15…4707",
+  "counterparty_bank": "N",
+  "transaction_details": "Prima Craciun Referinta bancii 1acd10eb-2b6f-3474-968b-28bb56d154ca",
+  "running_balance": 22568.63,
+  "counterparty_tax_id": null
+}
 
-Frontend: React (Vite) + Tailwind CSS + Shadcn UI (or Radix UI) for a high-quality, accessible design.
-
-Language: TypeScript (Strict mode).
-
-Core Features & Logic
-1. The "Smart" Invoice Editor (The Sheet Replacement)
-Interface: A clean, keyboard-navigable form.
-
-Dynamic Table:
-
-Columns: Product (Searchable Dropdown), Quantity, Unit Price (Auto-filled but editable), Line Total (Auto-calc).
-
-Logic: When I select a product, the Unit Price is fetched immediately. If I change the Quantity, the Total updates instantly.
-
-Smart Product Search: A "Combo Box" input that filters products by name as I type.
-
-Free-Text Entry: If I type a service that doesn't exist (e.g., "Emergency Call"), allow me to add it as a "Custom Item" for this invoice only without breaking the flow.
-
-2. "Auto-Learning" CRM (Client & Pet Management)
-The Problem: In spreadsheets, I have to re-type names or maintain a separate list.
-
-The Solution:
-
-Unified Input: When creating an invoice, I type the Client Name and Pet Name.
-
-Auto-Complete: If I type "Joh...", suggest "John Doe".
-
-Auto-Save: If I type a new name ("Jane Doe") and finalize the invoice, the system must automatically create a new Client record for Jane Doe in the background. Next time, she appears in the dropdown.
-
-Pet Association: Link pets to owners. If I select "John Doe", filter the Pet dropdown to only show his pets (e.g., "Rex", "Fluffy").
-
-3. Product & Inventory Database
-CRUD View: A Data Table to manage products and base prices (in RON).
-
-Stock Management (Bonus): A simple StockQuantity integer. Deduct from stock when an invoice is finalized. Warn if stock < 0.
-
-4. Invoicing & PDF Export
-Incremental IDs: Auto-generate IDs like INV-2025-001, INV-2025-002.
-
-PDF Generation: Use react-pdf or jspdf.
-
-Layout: Professional header with Logo (uploadable/static), Clinic Details, Client Details, and the Itemized Table.
-
-Styling: Remove gridlines/UI elements. Look like a paper document.
-
-5. Dashboard & Analytics
-Home Screen:
-
-KPI Cards: "Total Revenue Today", "Invoices Created", "Top Selling Service".
-
-Recent Activity: A list of the last 10 invoices with status badges (Draft/Saved).
-
-Technical Implementation Requirements
-Database Schema (SQL):
-
-Clients (id, name, contact_info)
-
-Pets (id, name, species, client_id)
-
-Products (id, name, price, stock)
-
-Invoices (id, friendly_id, client_id, date, total_amount)
-
-InvoiceItems (id, invoice_id, product_name_snapshot, quantity, price_snapshot) -> Note: Snapshot the name/price so historical invoices don't change if I change the product price later.
-
-Docker Setup:
-
-Create a multi-stage Dockerfile.
-
-Stage 1: Build Frontend (Vite build).
-
-Stage 2: Setup Backend.
-
-Stage 3: Serve Backend + Static Frontend files using the Node server.
-
-Volume: Mount a local volume ./data:/app/data so the SQLite database file persists across container restarts.
-
-Visual Polish:
-
-Use Zebra Striping (alternating colors) for all data tables (Even: White, Odd: Light Gray).
-
-Use a consistent color theme (e.g., Slate/Blue).
-
-Output Deliverables
-Please provide the complete code structure including:
-
-Project Tree structure.
-
-docker-compose.yml & Dockerfile.
-
-schema.sql (SQLite initialization).
-
-Backend Logic: server.js (or index.ts) handling the API routes.
-
-Frontend Logic: The main InvoiceForm.tsx component handling the complex state.
+3) Import rules the agent should implement (minimal but critical)
+	•	Header cleanup: trim column names (there’s a trailing space in tip tranzactie ).
+	•	Whitespace-as-null: if a string cell is empty or only spaces, store NULL.
+	•	Numbers: parse amount and running_balance as decimals (not floats in DB).
+	•	Dates: store processed_at as date (or datetime if you prefer), but normalize to a consistent format.
+	•	Dedup: compute transaction_id and upsert.

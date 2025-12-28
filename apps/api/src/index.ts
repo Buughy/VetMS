@@ -1,6 +1,7 @@
 import Fastify from 'fastify'; // trigger reload
 // touch
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -24,6 +25,13 @@ const server = Fastify({ logger: true });
 // Dev convenience: allow Vite dev server
 await server.register(cors, {
   origin: true,
+});
+
+// Enable file uploads for bank statement import
+await server.register(multipart, {
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB max file size
+  },
 });
 
 const db = openDb();

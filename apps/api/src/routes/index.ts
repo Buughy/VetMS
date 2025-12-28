@@ -6,6 +6,7 @@ import { registerPets } from './pets.js';
 import { registerInvoices } from './invoices.js';
 import { registerDashboard } from './dashboard.js';
 import { registerSettings } from './settings.js';
+import { registerTransactions } from './transactions.js';
 
 export function registerRoutes(server: FastifyInstance, db: Db) {
   server.get('/api/health', async () => ({ ok: true }));
@@ -16,4 +17,5 @@ export function registerRoutes(server: FastifyInstance, db: Db) {
   registerInvoices(server, db);
   registerDashboard(server, db);
   registerSettings(server, db);
+  registerTransactions(server, db);
 }

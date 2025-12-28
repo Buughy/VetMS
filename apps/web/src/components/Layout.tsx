@@ -11,6 +11,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { to: '/invoice', label: 'New Invoice' },
     { to: '/invoices', label: 'Invoices' },
     { to: '/products', label: 'Products' },
+    { to: '/transactions', label: 'Transactions' },
     { to: '/admin', label: 'Admin' },
   ];
 

@@ -46,4 +46,35 @@ export const api = {
   deleteInvoice: (id: number) => request(`/api/invoices/${id}`, { method: 'DELETE' }),
   getSettings: () => request<Settings>('/api/settings'),
   updateSetting: (key: string, value: string) => request(`/api/settings/${key}`, { method: 'PUT', body: JSON.stringify({ value }) }),
+
+  // Bank transactions
+  transactions: (params?: { from?: string; to?: string; search?: string; type?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.from) searchParams.set('from', params.from);
+    if (params?.to) searchParams.set('to', params.to);
+    if (params?.search) searchParams.set('search', params.search);
+    if (params?.type) searchParams.set('type', params.type);
+    const qs = searchParams.toString();
+    return request(`/api/transactions${qs ? `?${qs}` : ''}`);
+  },
+  transactionStats: (params?: { from?: string; to?: string }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.from) searchParams.set('from', params.from);
+    if (params?.to) searchParams.set('to', params.to);
+    const qs = searchParams.toString();
+    return request(`/api/transactions/stats${qs ? `?${qs}` : ''}`);
+  },
+  uploadTransactions: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/api/transactions/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Upload failed: ${res.status}`);
+    }
+    return res.json();
+  },
 };

@@ -5,6 +5,7 @@ import InvoiceForm from './components/InvoiceForm';
 import ProductTable from './components/ProductTable';
 import InvoiceList from './components/InvoiceList';
 import AdminPanel from './components/AdminPanel';
+import Transactions from './components/Transactions';
 
 const router = createBrowserRouter([
   {
@@ -19,6 +20,7 @@ const router = createBrowserRouter([
       { path: '/invoice/:id', element: <InvoiceForm /> },
       { path: '/invoices', element: <InvoiceList /> },
       { path: '/products', element: <ProductTable /> },
+      { path: '/transactions', element: <Transactions /> },
       { path: '/admin', element: <AdminPanel /> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],

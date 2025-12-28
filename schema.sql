@@ -62,3 +62,25 @@ INSERT OR IGNORE INTO settings(key, value) VALUES('clinic_phone', '+40 xxx xxx x
 INSERT OR IGNORE INTO settings(key, value) VALUES('clinic_cui', 'ROxxxxxx');
 INSERT OR IGNORE INTO settings(key, value) VALUES('clinic_iban', 'ROxx XXXX xxxx xxxx xxxx xxxx');
 INSERT OR IGNORE INTO settings(key, value) VALUES('clinic_logo', '');
+
+-- Bank statement transactions (ING format)
+CREATE TABLE IF NOT EXISTS bank_statement_transactions_ing (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  transaction_id TEXT NOT NULL UNIQUE,  -- SHA256 hash for dedup
+  account_iban TEXT NOT NULL,
+  processed_at TEXT NOT NULL,           -- ISO date
+  amount REAL NOT NULL,                 -- positive=income, negative=expense
+  currency TEXT NOT NULL DEFAULT 'RON',
+  transaction_type TEXT NOT NULL,
+  counterparty_name TEXT,
+  counterparty_address TEXT,
+  counterparty_account TEXT,
+  counterparty_bank TEXT,
+  transaction_details TEXT,
+  running_balance REAL NOT NULL,
+  counterparty_tax_id TEXT,
+  imported_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_transactions_processed_at ON bank_statement_transactions_ing(processed_at);
+CREATE INDEX IF NOT EXISTS idx_transactions_amount ON bank_statement_transactions_ing(amount);
