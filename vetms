@@ -1,0 +1,93 @@
+#!/bin/bash
+
+# VetMS Management Script
+
+PID_FILE=".vetms.pids"
+LOG_API="api.log"
+LOG_WEB="web.log"
+
+function show_help {
+    echo "VetMS Management Script"
+    echo ""
+    echo "Usage: ./vetms [command]"
+    echo ""
+    echo "Commands:"
+    echo "  start   - Start the API and Web servers in the background."
+    echo "  stop    - Stop the running servers."
+    echo "  update  - Pull latest changes from git and update dependencies."
+    echo "  help    - Show this help message."
+    echo ""
+}
+
+function start_app {
+    if [ -f "$PID_FILE" ]; then
+        echo "VetMS seems to be already running (PID file exists)."
+        echo "Run './vetms stop' first if you want to restart."
+        exit 1
+    fi
+
+    echo "Starting VetMS..."
+
+    # Start API
+    echo "Starting API server..."
+    nohup npm run dev:api > "$LOG_API" 2>&1 &
+    API_PID=$!
+    echo "API server started with PID $API_PID"
+
+    # Start Web
+    echo "Starting Web server..."
+    nohup npm run dev:web > "$LOG_WEB" 2>&1 &
+    WEB_PID=$!
+    echo "Web server started with PID $WEB_PID"
+
+    # Save PIDs
+    echo "$API_PID $WEB_PID" > "$PID_FILE"
+
+    echo ""
+    echo "VetMS is running!"
+    echo "Logs are being written to $LOG_API and $LOG_WEB"
+    echo "You can access the app at http://localhost:5173 (or configured port)"
+}
+
+function stop_app {
+    if [ ! -f "$PID_FILE" ]; then
+        echo "VetMS does not seem to be running (PID file not found)."
+        exit 0
+    fi
+
+    PIDS=$(cat "$PID_FILE")
+    echo "Stopping VetMS (PIDs: $PIDS)..."
+    
+    kill $PIDS 2>/dev/null
+    
+    rm "$PID_FILE"
+    echo "VetMS stopped."
+}
+
+function update_app {
+    echo "Updating VetMS..."
+    
+    echo "Pulling latest changes from git..."
+    git pull origin main
+    
+    echo "Installing dependencies..."
+    npm install
+    
+    echo "Update complete."
+    echo "If the app was running, please restart it using './vetms stop' and './vetms start'."
+}
+
+case "$1" in
+    start)
+        start_app
+        ;;
+    stop)
+        stop_app
+        ;;
+    update)
+        update_app
+        ;;
+    help|*)
+        show_help
+        ;;
+esac
