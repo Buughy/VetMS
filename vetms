@@ -28,6 +28,13 @@ function start_app {
 
     echo "Starting VetMS..."
 
+    echo "Installing/Updating dependencies..."
+    npm install
+    if [ $? -ne 0 ]; then
+        echo "Error installing dependencies. Aborting start."
+        exit 1
+    fi
+
     # Start API
     echo "Starting API server..."
     nohup npm run dev:api > "$LOG_API" 2>&1 &
